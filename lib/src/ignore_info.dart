@@ -22,12 +22,13 @@ class CandiesLintsIgnoreInfo {
       // remove empty code
       codes.remove('');
       final CharacterLocation location = lineInfo.getLocation(match.start);
-      // IgnoreInfo from analyzer
-      // The comment is on its own line, so it refers to the next line.
-      // TODO(zmtzawqlp): don't understand about this.
-
       // This is line number in ide
-      final int lineNumber = location.lineNumber;
+      int lineNumber = location.lineNumber;
+      if (_startOfLine(location)) {
+        // The comment is on its own line, so it refers to the next line.
+        lineNumber++;
+      }
+      // 记录的是 ignore所生效的行
       _ignoreForThisLineMap
           .putIfAbsent(
             lineNumber,
@@ -43,6 +44,14 @@ class CandiesLintsIgnoreInfo {
       // remove empty code
       _ignoreForFileSet.remove('');
     }
+  }
+
+  bool _startOfLine(CharacterLocation location) {
+    final int offsetOfLine =
+        result.lineInfo.getOffsetOfLine(location.lineNumber - 1);
+    final String beforeMatch = result.content
+        .substring(offsetOfLine, offsetOfLine + location.columnNumber - 1);
+    return beforeMatch.trim().isEmpty;
   }
 
   final Map<int, List<String>> _ignoreForThisLineMap = <int, List<String>>{};
@@ -65,7 +74,7 @@ class CandiesLintsIgnoreInfo {
   /// Return `true` if the [code] is ignored at the given [line].
   bool ignoredAt(String code, int line) =>
       ignored(code) ||
-      (_ignoreForThisLineMap[line - 1]?.contains(_toLowerCase(code)) ?? false);
+      (_ignoreForThisLineMap[line]?.contains(_toLowerCase(code)) ?? false);
 
   String _toLowerCase(String code) => code.trim().toLowerCase();
 
@@ -95,16 +104,20 @@ class CandiesLintsIgnoreInfo {
     // ide line number
     final int ideLineNumber = location.startLine;
     // add after ignore:
-    // previous line has ignore
-    if (_ignoreForThisLineMap.containsKey(ideLineNumber - 1)) {
+    // previous or own line has ignore
+    if (_ignoreForThisLineMap.containsKey(ideLineNumber)) {
       final List<String> codes =
-          _ignoreForThisLineMap[ideLineNumber - 1] ?? <String>[];
+          _ignoreForThisLineMap[ideLineNumber] ?? <String>[];
       for (final RegExpMatch match in _ignoreForThisLIneMatches) {
+        final CharacterLocation location =
+            result.lineInfo.getLocation(match.start);
         // ide number
-        final int line = result.lineInfo.getLocation(match.start).lineNumber;
-        if (line == ideLineNumber - 1) {
+        final int line = location.lineNumber;
+        if ((line == ideLineNumber && !_startOfLine(location)) ||
+            (line == ideLineNumber - 1 && _startOfLine(location))) {
           dartFileEditBuilder?.addSimpleInsertion(
               match.end, '${codes.isEmpty ? '' : ','} $code');
+          break;
         }
       }
     }
